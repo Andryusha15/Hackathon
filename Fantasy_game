@@ -1,0 +1,391 @@
+import os
+import random
+import time
+from colorama import init, Fore, Style
+
+# Ініціалізація кольорів для інтерфейсу
+init()
+PLAYER_COLOR = Fore.GREEN
+ENEMY_COLOR = Fore.RED
+SYSTEM_COLOR = Fore.YELLOW
+CHOICE_COLOR = Fore.CYAN
+ITEM_COLOR = Fore.MAGENTA
+RESET = Style.RESET_ALL
+
+# Предмети
+class Item:
+    def __init__(self, name, effect, value, price):
+        self.name = name
+        self.effect = effect
+        self.value = value
+        self.price = price
+
+    def __str__(self):
+        return f"{ITEM_COLOR}{self.name} ({self.effect}: {self.value}, ціна: {self.price}){RESET}"
+
+# Підкласи для різних типів предметів
+class Weapon(Item):
+    def __init__(self, name, damage, price):
+        super().__init__(name, "damage", damage, price)
+
+class Armor(Item):
+    def __init__(self, name, defense, price):
+        super().__init__(name, "defense", defense, price)
+
+class Potion(Item):
+    def __init__(self, name, heal_amount, price):
+        super().__init__(name, "heal", heal_amount, price)
+
+class ThrowingWeapon(Item):
+    def __init__(self, name, damage, price):
+        super().__init__(name, "throw", damage, price)
+
+# Характеристики гравця
+class Player:
+    def __init__(self):
+        self.hp = 100
+        self.max_hp = 100
+        self.damage = 10
+        self.armor = 5
+        self.gold = 100
+        self.xp = 0
+        self.level = 1
+        self.max_xp = 100
+        self.inventory = [Potion("Зілля здоров'я", 50, 20), Weapon("Ржавий меч", 5, 10)]
+        self.equipped_weapon = None
+        self.equipped_armor = None
+        self.location = "Ліс"
+        self.story_progress = 0  # Прогрес сюжету
+
+    def attack(self, enemy):
+        damage = self.damage + (self.equipped_weapon.value if self.equipped_weapon else 0)
+        if random.random() < 0.15:
+            damage *= 1.5
+            print(f"{PLAYER_COLOR}Критичний удар! Ви завдали {damage} шкоди!{RESET}")
+        damage = max(0, damage - enemy.armor)
+        enemy.hp -= damage
+        print(f"{PLAYER_COLOR}Ви завдали {damage} шкоди {enemy.name}. HP ворога: {enemy.hp}{RESET}")
+
+    def throw_weapon(self, weapon, enemy):
+        if weapon in self.inventory:
+            damage = weapon.value
+            if random.random() < 0.1:
+                damage *= 2
+                print(f"{PLAYER_COLOR}Влучний кидок!{RESET}")
+            enemy.hp -= damage
+            print(f"{PLAYER_COLOR}Ви кинули {weapon.name}, завдавши {damage} шкоди.{RESET}")
+            self.inventory.remove(weapon)
+        else:
+            print(f"{SYSTEM_COLOR}У вас немає {weapon.name}!{RESET}")
+
+    def take_damage(self, damage):
+        defense = self.armor + (self.equipped_armor.value if self.equipped_armor else 0)
+        damage = max(0, damage - defense)
+        self.hp -= damage
+        print(f"{ENEMY_COLOR}Ви отримали {damage} шкоди. Ваш HP: {self.hp}{RESET}")
+
+    def heal(self, amount):
+        self.hp = min(self.max_hp, self.hp + amount)
+        print(f"{PLAYER_COLOR}Ви відновили {amount} HP. Поточний HP: {self.hp}{RESET}")
+
+    def gain_xp(self, amount):
+        self.xp += amount
+        print(f"{SYSTEM_COLOR}Ви отримали {amount} XP. Поточний XP: {self.xp}/{self.max_xp}{RESET}")
+        while self.xp >= self.max_xp:
+            self.level_up()
+
+    def level_up(self):
+        self.level += 1
+        self.max_hp += 25
+        self.hp = self.max_hp
+        self.damage += 3
+        self.armor += 2
+        self.max_xp = int(self.max_xp * 1.5)
+        print(f"{SYSTEM_COLOR}Ви досягли рівня {self.level}! Нові статуси: HP {self.hp}, Шкода {self.damage}, Броня {self.armor}{RESET}")
+
+    def equip_item(self, item):
+        if isinstance(item, Weapon):
+            self.equipped_weapon = item
+            print(f"{PLAYER_COLOR}Ви екіпірували {item.name}. Шкода: {self.damage + item.value}{RESET}")
+        elif isinstance(item, Armor):
+            self.equipped_armor = item
+            print(f"{PLAYER_COLOR}Ви екіпірували {item.name}. Броня: {self.armor + item.value}{RESET}")
+
+# Характеристики ворогів
+class Enemy:
+    def __init__(self, name, hp, damage, armor, xp_reward, gold_reward, is_boss=False):
+        self.name = name
+        self.hp = hp
+        self.max_hp = hp
+        self.damage = damage
+        self.armor = armor
+        self.xp_reward = xp_reward
+        self.gold_reward = gold_reward
+        self.is_boss = is_boss
+
+    def attack(self, player):
+        damage = self.damage
+        if random.random() < 0.1:
+            damage *= 1.5
+            print(f"{ENEMY_COLOR}{self.name} завдав критичний удар!{RESET}")
+        player.take_damage(damage)
+
+# Хаарктеристики локації
+class Location:
+    def __init__(self, name, description, enemies, events):
+        self.name = name
+        self.description = description
+        self.enemies = enemies
+        self.events = events
+
+# Очищення екрану
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+# Відображення статусу гравця
+def show_status(player):
+    clear_screen()
+    print(f"{SYSTEM_COLOR}=== Статус Девіда ==={RESET}")
+    print(f"Локація: {player.location}")
+    print(f"Рівень: {player.level} | HP: {player.hp}/{player.max_hp}")
+    print(f"Шкода: {player.damage + (player.equipped_weapon.value if player.equipped_weapon else 0)} | Броня: {player.armor + (player.equipped_armor.value if player.equipped_armor else 0)}")
+    print(f"Золото: {player.gold} | XP: {player.xp}/{player.max_xp}")
+    print(f"Зброя: {player.equipped_weapon.name if player.equipped_weapon else 'Немає'}")
+    print(f"Броня: {player.equipped_armor.name if player.equipped_armor else 'Немає'}")
+    print(f"Інвентар: {', '.join([item.name for item in player.inventory]) if player.inventory else 'Порожній'}")
+    print(f"{SYSTEM_COLOR}====================={RESET}")
+
+# Система бою
+def fight(player, enemy):
+    print(f"{ENEMY_COLOR}Ви зіткнулися з {enemy.name}!{RESET}")
+    time.sleep(1)
+    while player.hp > 0 and enemy.hp > 0:
+        show_status(player)
+        print(f"{ENEMY_COLOR}{enemy.name} HP: {enemy.hp}/{enemy.max_hp}{RESET}")
+        print(f"\n{PLAYER_COLOR}Ваш хід:{RESET}")
+        print("1. Атакувати")
+        print("2. Використати предмет")
+        print("3. Кинути зброю")
+        if not enemy.is_boss:
+            print("4. Втікати")
+        choice = input(f"{CHOICE_COLOR}Виберіть дію (1-{4 if not enemy.is_boss else 3}): {RESET}")
+
+        if choice == "1":
+            player.attack(enemy)
+        elif choice == "2":
+            if player.inventory:
+                for i, item in enumerate(player.inventory, 1):
+                    print(f"{i}. {item}")
+                item_choice = input(f"{CHOICE_COLOR}Виберіть предмет (1-{len(player.inventory)}): {RESET}")
+                if item_choice.isdigit() and 1 <= int(item_choice) <= len(player.inventory):
+                    item = player.inventory[int(item_choice) - 1]
+                    if isinstance(item, Potion):
+                        player.heal(item.value)
+                        player.inventory.remove(item)
+        elif choice == "3":
+            throwing_weapons = [item for item in player.inventory if isinstance(item, ThrowingWeapon)]
+            if throwing_weapons:
+                for i, weapon in enumerate(throwing_weapons, 1):
+                    print(f"{i}. {weapon}")
+                weapon_choice = input(f"{CHOICE_COLOR}Виберіть зброю для кидка (1-{len(throwing_weapons)}): {RESET}")
+                if weapon_choice.isdigit() and 1 <= int(weapon_choice) <= len(throwing_weapons):
+                    weapon = throwing_weapons[int(weapon_choice) - 1]
+                    player.throw_weapon(weapon, enemy)
+            else:
+                print(f"{SYSTEM_COLOR}У вас немає зброї для кидка!{RESET}")
+        elif choice == "4" and not enemy.is_boss:
+            if random.random() < 0.5:
+                print(f"{PLAYER_COLOR}Ви успішно втекли від бою!{RESET}")
+                return False
+            else:
+                print(f"{SYSTEM_COLOR}Втеча не вдалася!{RESET}")
+
+        if enemy.hp > 0:
+            enemy.attack(player)
+
+        time.sleep(1)
+        input(f"{SYSTEM_COLOR}Натисніть Enter, щоб продовжити...{RESET}")
+
+    if player.hp > 0:
+        print(f"{SYSTEM_COLOR}Ви перемогли {enemy.name}!{RESET}")
+        player.gain_xp(enemy.xp_reward)
+        player.gold += enemy.gold_reward
+        print(f"{SYSTEM_COLOR}Отримано {enemy.gold_reward} золота!{RESET}")
+        return True
+    else:
+        print(f"{ENEMY_COLOR}Ви загинули...{RESET}")
+        return False
+
+# Магазин
+def shop(player):
+    items_for_sale = [
+        Weapon("Катана", 15, 50),
+        Weapon("Револьвер", 20, 80),
+        Armor("Шкіряний жилет", 10, 40),
+        Armor("Бронежилет", 15, 70),
+        Potion("Зілля здоров'я", 50, 20),
+        ThrowingWeapon("Сюрикен", 10, 15),
+        ThrowingWeapon("Кинджал", 15, 25)
+    ]
+    while True:
+        show_status(player)
+        print(f"{SYSTEM_COLOR}=== Магазин ==={RESET}")
+        print("Доступні товари:")
+        for i, item in enumerate(items_for_sale, 1):
+            print(f"{i}. {item.name} (Ціна: {item.price} золота)")
+        print(f"{len(items_for_sale) + 1}. Вийти")
+
+        choice = input(f"{CHOICE_COLOR}Виберіть товар (1-{len(items_for_sale) + 1}): {RESET}")
+        if choice.isdigit() and 1 <= int(choice) <= len(items_for_sale):
+            selected_item = items_for_sale[int(choice) - 1]
+            if player.gold >= selected_item.price:
+                player.gold -= selected_item.price
+                player.inventory.append(selected_item)
+                print(f"{PLAYER_COLOR}Ви купили {selected_item.name}!{RESET}")
+            else:
+                print(f"{SYSTEM_COLOR}Недостатньо золота!{RESET}")
+        elif choice == str(len(items_for_sale) + 1):
+            break
+        input(f"{SYSTEM_COLOR}Натисніть Enter, щоб продовжити...{RESET}")
+
+# Інвентар
+def inventory_menu(player):
+    while True:
+        show_status(player)
+        print(f"{SYSTEM_COLOR}=== Інвентар ==={RESET}")
+        if not player.inventory:
+            print("Інвентар порожній!")
+        else:
+            for i, item in enumerate(player.inventory, 1):
+                print(f"{i}. {item}")
+        print(f"{len(player.inventory) + 1}. Вийти")
+
+        choice = input(f"{CHOICE_COLOR}Виберіть предмет (1-{len(player.inventory) + 1}): {RESET}")
+        if choice.isdigit() and 1 <= int(choice) <= len(player.inventory):
+            item = player.inventory[int(choice) - 1]
+            if isinstance(item, Weapon) or isinstance(item, Armor):
+                player.equip_item(item)
+                player.inventory.remove(item)
+            elif isinstance(item, Potion):
+                player.heal(item.value)
+                player.inventory.remove(item)
+        elif choice == str(len(player.inventory) + 1):
+            break
+        input(f"{SYSTEM_COLOR}Натисніть Enter, щоб продовжити...{RESET}")
+
+# Головна функція гри
+def main():
+    player = Player()
+    game_running = True
+
+    # Сюжет
+    clear_screen()
+    print(f"{SYSTEM_COLOR}Передісторія:{RESET}")
+    print("У густому лісі народжується хлопчик на ім'я Девід. У нього були люблячі батьки, які любили його і які піклувались за ним. \nМати була домогосподаркою, а батько дроворубом. Одного дня Девід повертається додому після гулянки з друзями по густому лісу. Він приходить додому і бачить наступну \nкартину: мама і тато лежать холодними, заповнені засохшою кров'ю на підлозі. Це його дуже сильно травмує, що він стає холоднокровним, 'безчуттєвим', ідеальним вбивцею. \nЙого виховує дід, який прагне виховати його справжнього воїна, тобто справжнього чоловіка. \nВін вчить його основам полювання, кунг-фу та навичкам вбивства людей. В результаті цей Девід стає справжнім воїном, хоче дізнатись, хто вбив його батьків, дізнається ім'я і вбиває всіх на його шляху.")
+    print("\nСьогодення:")
+    print("Він зустрічає Вальдемара. Такого самого травмованого, замкнутого, але він не був без чуттєвим. \nВін не був холодним як Девід. Він був веселим і життєрадісним. Разом з Девідом вони подорожують по США XIX століття. Вони зустрічають графіню, яка розказує історію про бандитського ватажка, Артура. \nВона розказала, що він вбиває всіх своїх конкурентів, Девід і Вальдемар вирішують поїхати до бандитського ватажка, який опиняється антагоністом,\n який вбив батьків Девіда, який травмував його на все його життя.")
+    input(f"{SYSTEM_COLOR}Натисніть Enter, щоб продовжити...{RESET}")
+
+    # Локації
+    locations = {
+        "Ліс": Location(
+            "Ліс",
+            "Густий ліс, де Девід провів своє дитинство.",
+            [
+                Enemy("Бандит", 50, 8, 2, 30, 20),
+                Enemy("Найманий вбивця", 60, 10, 3, 35, 25),
+            ],
+            ["fight", "shop"]
+        ),
+        "Місто": Location(
+            "Місто",
+            "Жваве місто XIX століття, де Девід і Вальдемар дізнаються про Артура.",
+            [
+                Enemy("Бандитський посіпака", 80, 12, 4, 50, 30),
+                Enemy("Охоронець Артура", 90, 15, 5, 60, 40)
+            ],
+            ["fight", "shop"]
+        ),
+        "Замок": Location(
+            "Замок",
+            "Темний замок, де ховається бандитський ватажок Артур.",
+            [
+                Enemy("Права рука Артура", 150, 20, 10, 100, 80, is_boss=True),
+                Enemy("Артур", 200, 25, 15, 200, 150, is_boss=True)
+            ],
+            ["fight"]
+        )
+    }
+
+    # Фінальна битва
+    def final_battle(player):
+        arthur = Enemy("Артур", 200, 25, 15, 200, 150, is_boss=True)
+        print(f"{ENEMY_COLOR}Ви зустрічаєте Артура, вбивцю ваших батьків!{RESET}")
+        print(f"{SYSTEM_COLOR}Артур кидає сюрикен вам в око! Ви втрачаєте око, але продовжуєте бій.{RESET}")
+        player.hp -= 20  # Втрата HP через сюрикен
+        if fight(player, arthur):
+            print(f"{SYSTEM_COLOR}Артур переможений, але з’являється важко поранений Вальдемар...{RESET}")
+            print(f"{ENEMY_COLOR}Артур кидає кинджал у Вальдемара!{RESET}")
+            choice = input(f"{CHOICE_COLOR}1. Добити Артура\n2. Врятувати Вальдемара{RESET}\nВиберіть (1-2): ")
+            if choice == "1":
+                print(f"{PLAYER_COLOR}Ви кидаєте сюрикен в серце Артура, але Вальдемар помирає. Ви перемогли, але втратили друга.{RESET}")
+            elif choice == "2":
+                print(f"{PLAYER_COLOR}Ви стрибаєте, щоб врятувати Вальдемара, але отримуєте кинджал у серце. В останній момент ви кидаєте сюрикен в Артура, вбиваючи його.{RESET}")
+                print(f"{ENEMY_COLOR}Ви помираєте, але рятуєте Вальдемара і знищуєте Артура.{RESET}")
+            else:
+                print(f"{SYSTEM_COLOR}Неправильний вибір! Гра завершується.{RESET}")
+            return False  # Завершення гри
+        return True
+
+    # Основна гра
+    while game_running:
+        current_location = locations[player.location]
+        show_status(player)
+        print(f"\n{SYSTEM_COLOR}Ви знаходитесь в {current_location.name}: {current_location.description}{RESET}")
+        print("\nДоступні дії:")
+        options = []
+        if "shop" in current_location.events:
+            options.append("1. Відвідати магазин")
+        if "fight" in current_location.events and current_location.enemies:
+            options.append("2. Битися з ворогом")
+        options.append("3. Перейти в іншу локацію")
+        options.append("4. Переглянути інвентар")
+        options.append("5. Вийти з гри")
+
+        for option in options:
+            print(option)
+
+        choice = input(f"{CHOICE_COLOR}Виберіть дію: {RESET}")
+
+        if choice == "1" and "shop" in current_location.events:
+            shop(player)
+        elif choice == "2" and "fight" in current_location.events and current_location.enemies:
+            enemy = random.choice(current_location.enemies)
+            if fight(player, enemy):
+                current_location.enemies.remove(enemy)
+                if player.location == "Замок Артура" and enemy.name == "Артур":
+                    game_running = final_battle(player)
+        elif choice == "3":
+            print(f"{SYSTEM_COLOR}Доступні локації: {', '.join(locations.keys())}{RESET}")
+            new_location = input(f"{CHOICE_COLOR}Введіть назву локації: {RESET}")
+            if new_location in locations:
+                player.location = new_location
+                print(f"{PLAYER_COLOR}Ви перейшли до {new_location}{RESET}")
+            else:
+                print(f"{SYSTEM_COLOR}Неправильна локація!{RESET}")
+        elif choice == "4":
+            inventory_menu(player)
+        elif choice == "5":
+            print(f"{SYSTEM_COLOR}Дякуємо за гру!{RESET}")
+            game_running = False
+        else:
+            print(f"{SYSTEM_COLOR}Неправильний вибір!{RESET}")
+
+        if player.hp <= 0:
+            print(f"{ENEMY_COLOR}Гра закінчена. Ви загинули!{RESET}")
+            game_running = False
+
+        input(f"{SYSTEM_COLOR}Натисніть Enter, щоб продовжити...{RESET}")
+
+if __name__ == "__main__":
+    main()
